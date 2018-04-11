@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"log"
 	"os"
 )
@@ -10,7 +11,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer from.Close
+	defer from.Close()
 
 	to, err := os.OpenFile("./example05.copy.txt", os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
