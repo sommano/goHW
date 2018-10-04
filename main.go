@@ -16,15 +16,15 @@ func main() {
 
 	http.HandleFunc("/helloworld", helloWorldHandler)
 
-	log.Printf("Server starting on port %v\n", port)
+	log.Printf("Server starting on port number:%v\n", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", port), nil))
 }
 
 func helloWorldHandler(w http.ResponseWriter, r *http.Request) {
-	response := helloWorldResponse{Message: "Hello World"}
+	response := helloWorldResponse{Message: "Hello World!!"}
 	data, err := json.Marshall(response)
 	if err != nil {
-		panic("Ooops")
+		panic("Ooops!!")
 	}
 
 	fmt.Fprint(w, string(data))
