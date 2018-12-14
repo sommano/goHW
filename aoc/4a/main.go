@@ -3,114 +3,97 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
-type entry struct {
-	date   time.Time
-	action action
-	guard  int
-}
-
-type action int
-
-const (
-	beginShift action = iota
-	fallAsleep
-	wakeUp
-)
-
 func main() {
-	entries := read()
+	start := time.Now()
+	file, err := os.Open("4.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	// see: https://regex101.com/r/VRbjzk/1
+	var re = regexp.MustCompile(`.(.*)(]\s)(.[a-zA-Z]*)(..)(.*)`)
+	lines := []string{}
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	sort.Strings(lines)
+	currentGuard := 0
+	guardSleepTimes := make([][]int, 4000) //should calculate highest guard id instead of hardcoding 4000
+	for i := 0; i < 4000; i++ {
+		guardSleepTimes[i] = make([]int, 61) // minute counters, 61 is summ
+	}
 
-	var sleepyguard int
-	asleep := map[int]int{}
-	var guard, from int
-	for _, e := range entries {
-		switch e.action {
-		case beginShift:
-			guard = e.guard
-		case fallAsleep:
-			from = e.date.Minute()
-		case wakeUp:
-			t := e.date.Minute() - from
-			asleep[guard] += t
-			if asleep[guard] > asleep[sleepyguard] {
-				sleepyguard = guard
+	sleepTimer := 0 // time guard fell asleep
+	for _, line := range lines {
+		eventLog := re.FindAllStringSubmatch(line, -1)
+		minuteSplit := strings.Split(eventLog[0][1], ":")
+		minutes, _ := strconv.Atoi(minuteSplit[1])
+		logType := eventLog[0][3] // falls,wakes,Guard
+		if logType == "Guard" {
+			s := strings.Split(eventLog[0][5], " ")
+			currentGuard, err = strconv.Atoi(s[0])
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+		if logType == "falls" {
+			sleepTimer = minutes
+		}
+		// when guard wakes up calculate time sleep
+		if logType == "wakes" {
+			for i := sleepTimer; i < minutes; i++ {
+				guardSleepTimes[currentGuard][i]++  // incrememnt current slept count
+				guardSleepTimes[currentGuard][60]++ // total minutes slept buffer
+			}
+			sleepTimer = 0
+
+		}
+
+	}
+	// Find sleepiest Guard
+	sleepiestGuard := 0
+	sleepiestMinute := 0
+	sleepBuf := 0
+	sleepiestGuardMin := 0
+	for guard, sleepTime := range guardSleepTimes {
+		// only get guards that have slept
+		if sleepTime[60] == 0 {
+			continue
+		}
+		if sleepTime[60] >= guardSleepTimes[sleepiestGuard][60] {
+			sleepiestGuard = guard
+
+		}
+		for minute, sleepMin := range sleepTime {
+			if sleepMin > sleepBuf && minute != 60 {
+				sleepiestMinute = minute
+				sleepBuf = sleepMin
+				sleepiestGuardMin = guard
 			}
 		}
 	}
-
-	minutes := [60]int{}
-	guard = -1
-	var sleepyminute int
-	for _, e := range entries {
-		if e.action == beginShift {
-			guard = e.guard
-			continue
-		}
-		if guard != sleepyguard {
-			continue
-		}
-		switch e.action {
-		case fallAsleep:
-			from = e.date.Minute()
-		case wakeUp:
-			to := e.date.Minute()
-			for i := from; i < to; i++ {
-				minutes[i]++
-				if minutes[i] > minutes[sleepyminute] {
-					sleepyminute = i
-				}
-			}
+	// Find sleepiest hour for sleepiest guard
+	sleepiestHour := 0
+	sleepBuf = 0
+	for hour, sleepTime := range guardSleepTimes[sleepiestGuard] {
+		if sleepTime > sleepBuf && hour != 60 {
+			sleepiestHour = hour
+			sleepBuf = sleepTime
 		}
 	}
-
-	fmt.Printf("Answer: guard %d * minute %d = %d\n",
-		sleepyguard, sleepyminute, sleepyguard*sleepyminute)
-}
-
-func read() []entry {
-	entries := []entry{}
-	s := bufio.NewScanner(os.Stdin)
-	for s.Scan() {
-		txt := s.Text()
-		e := entry{guard: -1}
-
-		var y, m, d, hr, mn int
-		n, err := fmt.Sscanf(txt, "[%d-%d-%d %d:%d]", &y, &m, &d, &hr, &mn)
-		if n < 5 || err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
-			continue
-		}
-		e.date = time.Date(y, time.Month(m), d, hr, mn, 0, 0, time.UTC)
-
-		i := strings.Index(txt, "] ")
-		if i == -1 {
-			fmt.Fprintf(os.Stderr, "ERROR: unable to parse message\n")
-			continue
-		}
-		txt = txt[i+2:]
-		n, err = fmt.Sscanf(txt, "Guard #%d begins shift", &e.guard)
-		switch {
-		case n == 1:
-			e.action = beginShift
-		case txt == "falls asleep":
-			e.action = fallAsleep
-		case txt == "wakes up":
-			e.action = wakeUp
-		default:
-			fmt.Fprintf(os.Stderr, "ERROR: unknown action\n")
-			continue
-		}
-		entries = append(entries, e)
-	}
-
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].date.Before(entries[j].date)
-	})
-	return entries
+	fmt.Println("Sleepiest Guard:", sleepiestGuard)
+	fmt.Println("Sleepiest hour:", sleepiestHour)
+	fmt.Println("Part 1 Code:", sleepiestGuard*sleepiestHour)
+	fmt.Println("Part 2 Code:", sleepiestGuardMin*sleepiestMinute)
+	fmt.Println(time.Since(start))
 }
